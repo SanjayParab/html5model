@@ -1,0 +1,72 @@
+-- Sample HTML 5 Specification Murphi model 
+
+Const 
+  elementCount: 10;
+  
+Type
+  elementID: 1..elementCount;
+  int_range: 0..10;
+
+  --tokens from tokenization stage
+  token: enum{comment,html};    
+  
+  --insertion mode controls the tree construction stage. 
+  mode_type: enum{initial,before_html,in_head,in_body,text};
+
+  
+  element: Record
+    insertion_mode: mode_type; 
+    tag: token; 
+    --var tag_name; --not sure of declaration, but its neede
+  End;d
+
+Var
+  --an array of elements
+  elements: Array[elementID] of element; 
+
+  --array to hold DOM tree elements
+  DOM_elements: Array[elementID];
+
+
+--Procedures and Functions 
+
+  
+  
+-- Rules
+
+Ruleset e:elementID Do
+
+  Rule "initial insertion mode"
+    (elements[e].insertion_mode = "initial")
+    ==>
+    Begin
+       switch elements[e].tag
+       
+       case "comment":
+          --elements[e].data := "x" --not sure
+          DOM_elements[e] := elements[e].tag; --append node to document object
+          elements[e].insertion_mode := "before html"
+       --else
+          --parse error
+       End;
+    End;
+
+  end;
+  --Rule "before html insertion mode"
+
+  --End;
+
+ 
+EndRuleset;
+
+
+
+Startstate
+  -- clear elements
+  For e:elementID Do
+    elements[e].insertion_mode := "initial";    
+  End;
+  undefine DOM_elements;
+
+EndStartstate;
+
