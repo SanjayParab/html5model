@@ -17,8 +17,8 @@ Type
   element: Record
     insertion_mode: mode_type; 
     tag: token; 
-    --var tag_name; --not sure of declaration, but its neede
-  End;d
+    --var tag_name; --not sure of declaration, but its needed
+  End;
 
 Var
   --an array of elements
