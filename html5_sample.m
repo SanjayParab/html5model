@@ -2,7 +2,6 @@
 
 Const 
   elementCount: 10;
-
   
 Type
   elementID: 1..elementCount;
@@ -26,11 +25,6 @@ Type
   End;
 
 Var
-
-  stack_pointer: elementID;
-  --stack_bottom: elementID;
-  stack_top_element: element;
-
   --an array of elements
   elements: Array[elementID] of element; 
 
@@ -43,18 +37,7 @@ Var
 
 --Procedures and Functions 
 
-function stack_push(ele: element): boolean;
-begin
-  stack_pointer := stack_pointer - 1;
-  elements[stack_pointer] := element;
-  return true;
-end;
-
-function stack_pop(): element;
-begin
-  stack_top_element := elements[stack_pointer];
-  stack_pointer := stack_pointer - 1;
-end;
+  
   
 -- Rules
 
@@ -108,8 +91,6 @@ EndRuleset;
 
 
 Startstate
-  stack_pointer := 10;
-  --stack_bottom := 0;
   -- clear elements
   For e:elementID Do
     elements[e].insertion_mode := initial;   
