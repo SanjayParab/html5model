@@ -32,7 +32,7 @@ Type
   int_range: 0..10;
 
   --tokens from tokenization stage
-  token: enum{html,head,body,script,link,style,meta,end_head,end_body,end_br,end_html};    
+  token: enum{html,head,body,script,link,style,meta,head_end,body_end,br_end,html_end};    
   
   --tag names for tokens
   tag_name: enum{HTMLHtmlElement,HTMLHeadElement,HTMLLinkElement,HTMLMetaElement,HTMLStyleElement,HTMLScriptElement};
@@ -43,7 +43,7 @@ Type
   frameset_tags: enum{not_ok,ok};
   
   element: Record
-    ID: int_range; 
+    ID: elementID; 
     tag: token; 
     tag_name: tag_name;
     insertion_mode: mode_type; 
@@ -81,7 +81,7 @@ procedure stack_push(e:element);
 procedure stack_pop();
   begin
     stack_top_element := stack_open_elements[stack_pointer];
-    stack_pointer := stack_pointer - 1; --to confirm with yuva
+    stack_pointer := stack_pointer - 1; 
     current_node := stack_open_elements[stack_pointer];
   end;
 
@@ -146,7 +146,7 @@ Ruleset e:elementID; t:token Do
          stack_push(elements[e]); 
          elements[e].insertion_mode := before_head;
 
-       case end_head, end_body, end_html, end_br:
+       case head_end, body_end, html_end, br_end:
          create_element(html, e);
 
          --append token to document object
@@ -209,11 +209,11 @@ Ruleset e:elementID; t:token Do
            elements[e].orig_insertion_mode := elements[e].insertion_mode;
            elements[e].insertion_mode := text;
    
-         case end_head:
+         case head_end:
            stack_pop();
            elements[e].insertion_mode := after_head;
 
-         --case end_body,end_html,end_br:
+         --case body_end, html_end, br_end:
            --case end_head;
 
          else
@@ -248,11 +248,13 @@ Ruleset e:elementID; t:token Do
             if t = meta | t = link then
                create_element(t, e); 
                stack_push(elements[e]);
+
             elsif t = style then
                create_element(t,e);
                stack_push(elements[e]);
                elements[e].orig_insertion_mode := elements[e].insertion_mode;
                elements[e].insertion_mode := text;
+
             elsif t = script then
                create_element(t,e);
                elements[e].parser_inserted := true;
@@ -266,7 +268,7 @@ Ruleset e:elementID; t:token Do
             --current pointer stored by x.
             --to check with yuva how to remove the node
            
-         case end_body,end_html,end_br:
+         case body_end, html_end, br_end:
             create_element(t,e);
             stack_push(elements[e]);
             frameset_ok_tag := ok;
@@ -274,7 +276,6 @@ Ruleset e:elementID; t:token Do
 
          endswitch;
   endrule;
-
 
 
 EndRuleset;
