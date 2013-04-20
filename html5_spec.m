@@ -31,10 +31,12 @@ Type
 
   --tokens from tokenization stage
   token: enum{
-              blank,html,head,body,form,
+              null,html,head,body,form,button,
               script,link,style,meta,head_end,
+              table,td,th,p,thead,tr,tbody,dd,dt,li, --tokens included for in_body checks
+              div,
               body_end,form_end,br_end,script_end,
-              html_end
+              p_end,div_end,html_end
               };    
   
   --tag names for tokens
@@ -47,12 +49,16 @@ Type
   --insertion mode controls the tree construction stage. 
   mode_type: enum{
                    initial,before_html,before_head,
-                   in_head,after_head,in_body,text
+                   in_head,after_head,in_body,text,
+                   after_body
                  };
 
   frameset_tags: enum{not_ok,ok};
   current_doc_readiness: enum{loading,interactive,complete};
-  
+  element_scope: enum{body_scope,button_scope};
+  exempted_implied_tag: enum{none,paragraph};
+  attribute_type: enum{http_equiv,content,async};
+  attribute: array[elementID] of attribute_type; 
 
   element: Record
     ID: elementID; 
@@ -62,7 +68,7 @@ Type
     orig_insertion_mode: mode_type;
     parser_inserted: boolean;
     force_async: boolean;
-    
+    attribute: array[elementID] of attribute; --2-dim array to hold attribute value
   End;
 
 Var
@@ -78,41 +84,7 @@ Var
   stack_open_elements: Array[elementID] of element;
 
 
-----------------------------------------------------------------------------
---Functions --
-----------------------------------------------------------------------------
 
-
-function count_stack_elements() : int_range;
-  var count:int_range;
-
-  begin
-    count := 0;
-    for i:int_range do
-	if stack_open_elements[i].tag != blank then
-           count := count + 1;
-        endif;
-    endfor;
-    return count;
-  end;
-
-function get_stack_elemID(i:elementID) : element;
-  begin
-     return stack_open_elements[i];
-  end;
-
-function find_element(t:token) :element;
-var i:elementID;
-
-  begin
-    while elements[i].tag != t do
-          i := i + 1;
-    endwhile;
-    return elements[i];
-  end;
-
-
-      
 -----------------------------------------------------------------------------
 --Procedures--
 -----------------------------------------------------------------------------
@@ -148,6 +120,11 @@ procedure set_pointer(t:token; e:elementID);
    endswitch;
  end;
 
+procedure set_current_node(e:element);
+ begin
+   current_node := e;
+ end;
+
 procedure create_element(t:token; e:elementID);
   begin
     elements[e].ID := e;
@@ -167,6 +144,145 @@ procedure create_element(t:token; e:elementID);
       case script,script_end:
         elements[e].tag_name := HTMLScriptElement;
     endswitch;
+  end;
+
+----------------------------------------------------------------------------
+--Functions --
+----------------------------------------------------------------------------
+
+
+function count_stack_elements() : int_range;
+  var count:int_range;
+
+  begin
+    count := 0;
+    for i:int_range do
+	if stack_open_elements[i].tag != null then
+           count := count + 1;
+        endif;
+    endfor;
+    return count;
+  end;
+
+function get_stack_elemID(i:elementID) : element;
+  begin
+     return stack_open_elements[i];
+  end;
+
+function find_element(t:token): element;
+var i:elementID;
+
+  begin
+    while elements[i].tag != t do
+          i := i + 1;
+    endwhile;
+    return elements[i];
+  end;
+
+function is_member(t:token; num:int_range) : boolean;
+ var element_type_list : array[elementID] of token; 
+ begin
+   switch num
+      case 1:
+           element_type_list[0] := html;
+           element_type_list[1] := table;
+           element_type_list[2] := td;
+           element_type_list[3] := th;
+      case 2:
+           element_type_list[0] := html;
+           element_type_list[1] := body;
+           element_type_list[2] := p;
+           element_type_list[3] := thead;
+           element_type_list[4] := tr;
+           element_type_list[5] := th;
+           element_type_list[6] := td;
+           element_type_list[7] := tbody;
+      case 3:
+           element_type_list[0] := dd;
+           element_type_list[1] := dt;
+           element_type_list[2] := li;
+      case 4:
+           element_type_list[0] := dd;
+           element_type_list[1] := dt;
+           element_type_list[2] := li;
+           element_type_list[2] := p;
+   endswitch;
+
+   for i:elementID do
+     if t = element_type_list[i] then
+        return true;
+     else
+        return false;
+     endif;    
+   endfor;
+  end;
+
+function element_in_specific_scope(e:element; target:token; s:element_scope): boolean;
+  var node : element;
+  var action : enum{loop,pass,fail};
+  begin  
+    node := e;
+    set_current_node(node);   
+ 
+    while action = loop do
+
+       if current_node.tag = target then
+          action := pass;
+       elsif  is_member(current_node.tag,1) then 
+          action := fail;
+       elsif (s = button_scope) & (current_node.tag = button) then
+          action := fail;
+       else
+          node := stack_open_elements[e.ID+1];
+          action := loop;
+       endif;
+    endwhile;   
+
+    if action = pass then
+       return true;
+    elsif action = fail then
+       return false;
+    endif;      
+  end;   
+
+function find_element_in_scope(target:token; elem_scope:element_scope): boolean;
+var result : array[elementID] of boolean;
+  begin
+     for i : elementID do 
+        result[i] := element_in_specific_scope(stack_open_elements[i],target,elem_scope);           
+     
+        if result[i] = true then        
+           return true;
+        else 
+           return false;
+        endif;
+     endfor;
+  end;
+
+
+function accepted_elements_in_stack() : boolean; 
+  begin
+    for i:elementID do
+       if is_member(stack_open_elements[i].tag,2) then
+          return true;
+       else
+          return false;
+       endif;
+    end;
+  end;  
+
+procedure generate_implied_endtags(ex:exempted_implied_tag);
+ begin 
+    if ex = none then
+       if !(is_member(current_node.tag,3)) then 
+           stack_pop();
+       endif;
+    elsif ex = paragraph then
+       if !(is_member(current_node.tag,4)) then 
+           stack_pop();
+       endif;
+    endif;
+
   end;
 
 ----------------------------------------------------------------------------
@@ -240,11 +356,6 @@ Ruleset e:elementID; t:token Do
          stack_push(elements[e]); 
          elements[e].insertion_mode := in_head;
 
-       else
-         create_element(html, e);   
-         set_pointer(head, e);  
-         stack_push(elements[e]); 
-         elements[e].insertion_mode := in_head;
        endswitch;
    endrule;
 
@@ -257,10 +368,15 @@ Ruleset e:elementID; t:token Do
            --parse error;
            --process every attribute and add to top of SOE if not there. not sure if necessary
 
-         case link, meta:
+         case link:
            create_element(t, e); 
            stack_push(elements[e]);
           
+         case meta:
+           --in progress
+           create_element(t, e); 
+           stack_push(elements[e]);
+
          case style:
            create_element(t,e);
            stack_push(elements[e]);
@@ -350,9 +466,9 @@ Ruleset e:elementID; t:token Do
    (elements[e].insertion_mode = after_head)
     ==>
     var 
-       x, stack_count: int_range;
-       result: element;
-    
+       i,x, stack_count: int_range;
+       result,node: element;
+
     Begin
        switch t
          case html:
@@ -390,6 +506,104 @@ Ruleset e:elementID; t:token Do
             else
                frameset_ok_tag := not_ok;
             endif;
+
+         case body_end:
+            if !find_element_in_scope(body,body_scope) then
+                --parse error
+            elsif !accepted_elements_in_stack() then
+                --parse error
+            else
+              elements[e].insertion_mode := after_body;
+            endif;
+
+         case html_end:
+             if !find_element_in_scope(body,body_scope) then
+                --parse error
+             elsif !accepted_elements_in_stack() then
+                --parse error
+             else
+              elements[e].insertion_mode := after_body;
+             endif;
+
+         case div,p:
+             if find_element_in_scope(p,button_scope) then
+                --act as p_end
+             else
+                create_element(t,e);
+                stack_push(elements[e]);
+             endif;
+        
+         case form:
+             if form_pointer != 0 then
+                --parse error, ignore token
+             else
+                if find_element_in_scope(p,button_scope) then
+                   --act as if p_end had been seen
+                   if !find_element_in_scope(p,button_scope) then
+                      --parse error
+                      create_element(p,e);
+                      stack_push(elements[e]);
+                   else
+                      generate_implied_endtags(paragraph);
+                      while current_node.tag_name != elements[e].tag_name do
+                        --parse error
+                        stack_pop();
+                      endwhile;
+                      if current_node.tag_name = elements[e].tag_name then
+                         stack_pop();
+                      endif;
+                   endif;
+                endif;
+
+                create_element(t,e);
+                stack_push(elements[e]);
+                set_pointer(form,e);
+             endif;
+
+         case div_end:
+             if !find_element_in_scope(t,body_scope) then
+                --parse error
+             else
+                generate_implied_endtags(none);
+
+                while current_node.tag_name != elements[e].tag_name do
+                   --parse error
+                   stack_pop();
+                endwhile;
+                if current_node.tag_name = elements[e].tag_name then
+                   stack_pop();
+                endif;
+             endif;
+   
+
+         case form_end:
+               node := elements[form_pointer]; 
+               set_pointer(form,0);                
+               if (node.ID = 0)  then
+                  --parse error
+               else
+                  generate_implied_endtags(none);
+                  if current_node.tag_name != node.tag_name then
+                     --parse error
+                     remove_stack_element(node.ID);
+                  endif;
+               endif;           
+
+         case p_end:
+              if !find_element_in_scope(p,button_scope) then
+                 --parse error
+                 create_element(p,e);
+                 stack_push(elements[e]);
+              else
+                 generate_implied_endtags(paragraph);
+                 while current_node.tag_name != elements[e].tag_name do
+                    --parse error
+                    stack_pop();
+                 endwhile;
+                 if current_node.tag_name = elements[e].tag_name then
+                   stack_pop();
+                 endif;
+              endif;
       endswitch;
   endrule;           
                 
